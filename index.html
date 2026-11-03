@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Haushaltsbuch</title>
+<meta name="description" content="Persönliches Haushaltsbuch: Einnahmen und Ausgaben eintragen und monatlich auswerten.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Haushalt">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#eef2f1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111816" media="(prefers-color-scheme: dark)">
+<style>
+/* Layout: two-column ledger — entry form + month list left, month chart right; stacks on phones */
+:root {
+  --bg: #eef2f1; --surface: #ffffff; --ink: #17221f; --muted: #5b6b66; --line: #d3dcd9;
+  --accent: #1f5f5b; --accent-ink: #ffffff; --income: #2f7d4f; --expense: #b4452f; --focus: #2b7de9;
+  --c1:#1f5f5b; --c2:#d08a2c; --c3:#7a5aa6; --c4:#c2523f; --c5:#3f86b8; --c6:#8a9a3b; --c7:#b5607f; --c8:#6b7d78;
+  --display: ui-rounded, "SF Pro Rounded", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg:#111816; --surface:#1a2421; --ink:#e4ece9; --muted:#93a59f; --line:#2d3b37;
+  --accent:#5fb3aa; --accent-ink:#0d1714; --income:#6cc28b; --expense:#ee8a74; --focus:#7fb2ff;
+  --c1:#5fb3aa; --c2:#e7a84c; --c3:#a88bd6; --c4:#ee8a74; --c5:#6fb2e0; --c6:#b3c45d; --c7:#e08fae; --c8:#95a8a2;
+  color-scheme: dark; } }
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+[hidden] { display: none !important; }
+.wrap { max-width: 1080px; margin: 0 auto; padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 22px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 14px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 6vw, 40px); line-height: 1.05; margin: 0; letter-spacing: -0.01em; }
+.month-nav { display: flex; align-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
+.month-nav button { width: 40px; height: 40px; border-radius: 50%; border: 0; background: transparent; color: var(--ink); font-size: 20px; cursor: pointer; }
+.month-nav button:active { background: var(--bg); }
+.month-label { min-width: 150px; text-align: center; font-family: var(--display); font-weight: 600; font-size: 17px; }
+
+.totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 2px solid var(--ink); border-bottom: 1px solid var(--line); }
+.totals > div { padding: 12px 12px 14px 0; display: grid; gap: 2px; min-width: 0; }
+.totals > div + div { padding-left: 12px; border-left: 1px solid var(--line); }
+.label { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.big { font-family: var(--body); font-variant-numeric: tabular-nums; font-size: clamp(15px, 4.4vw, 28px); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.01em; }
+.pos { color: var(--income); } .neg { color: var(--expense); }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 22px; align-items: start; }
+@media (max-width: 820px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.col { display: grid; gap: 22px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; min-width: 0; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 19px; margin: 0 0 14px; }
+
+form { display: grid; gap: 14px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 9px; padding: 3px; gap: 3px; position: relative; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { text-align: center; padding: 9px; border-radius: 7px; cursor: pointer; font-weight: 600; color: var(--muted); }
+.seg input:checked + label.out { background: var(--expense); color: var(--surface); }
+.seg input:checked + label.in { background: var(--income); color: var(--surface); }
+.seg input:focus-visible + label { outline: 2px solid var(--focus); outline-offset: 2px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field > span { font-size: 13px; color: var(--muted); font-weight: 500; }
+/* 16px verhindert das automatische Zoomen von iOS beim Antippen */
+input[type=text], input[type=date], select { width: 100%; min-width: 0; font: inherit; font-size: 16px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px 11px; min-height: 44px; -webkit-appearance: none; appearance: none; }
+select { background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 32px; }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.amount-wrap { position: relative; }
+.amount-wrap input { padding-right: 30px; font-family: var(--mono); }
+.amount-wrap::after { content: "€"; position: absolute; right: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+.btn { font: inherit; font-weight: 600; border: 0; border-radius: 9px; padding: 12px 16px; min-height: 44px; cursor: pointer; background: var(--accent); color: var(--accent-ink); }
+.btn:active { filter: brightness(1.1); }
+.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+.err { color: var(--expense); font-size: 13px; min-height: 1em; margin: -6px 0 0; }
+
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.list li:last-child { border-bottom: 0; }
+.dot { width: 10px; height: 10px; border-radius: 50%; }
+.desc { min-width: 0; }
+.desc b { font-weight: 500; display: block; overflow-wrap: anywhere; }
+.desc small { color: var(--muted); font-size: 12.5px; }
+.amt { font-weight: 500; white-space: nowrap; }
+.del { border: 0; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: 13px; padding: 8px; border-radius: 6px; min-height: 36px; }
+.del.arm { color: var(--surface); background: var(--expense); }
+.empty { color: var(--muted); padding: 4px 0; margin: 0; }
+
+.chart-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+.chart-head h2 { margin: 0; }
+.tabs { display: flex; gap: 4px; background: var(--bg); padding: 3px; border-radius: 9px; }
+.tabs button { font: inherit; font-size: 13.5px; font-weight: 600; border: 0; background: transparent; color: var(--muted); padding: 7px 12px; border-radius: 7px; cursor: pointer; }
+.tabs button[aria-pressed=true] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.pie-box { display: grid; place-items: center; padding: 8px 0 16px; }
+.pie-box svg { width: min(100%, 280px); height: auto; display: block; }
+.pie-box path { stroke: var(--surface); stroke-width: 2; }
+.legend { list-style: none; margin: 0; padding: 0; }
+.legend li { display: grid; grid-template-columns: 10px minmax(0,1fr) auto 52px; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.legend li > span:nth-child(2) { min-width: 0; overflow-wrap: anywhere; }
+.legend .pct { color: var(--muted); text-align: right; font-size: 13px; }
+.chart-empty { color: var(--muted); text-align: center; padding: 36px 0; margin: 0; }
+
+.data-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.note { font-size: 13px; color: var(--muted); margin: 12px 0 0; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg);
+  padding: 10px 16px; border-radius: 999px; font-size: 14px; font-weight: 500; max-width: calc(100% - 32px); text-align: center; z-index: 20; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Haushaltsbuch</h1>
+    <div class="month-nav" role="group" aria-label="Monat wählen">
+      <button id="prev" type="button" aria-label="Vorheriger Monat">‹</button>
+      <div class="month-label" id="monthLabel" aria-live="polite">–</div>
+      <button id="next" type="button" aria-label="Nächster Monat">›</button>
+    </div>
+  </header>
+
+  <section class="totals" aria-label="Monatssummen">
+    <div><span class="label">Einnahmen</span><span class="big num pos" id="tIn">0,00 €</span></div>
+    <div><span class="label">Ausgaben</span><span class="big num neg" id="tOut">0,00 €</span></div>
+    <div><span class="label">Saldo</span><span class="big num" id="tBal">0,00 €</span></div>
+  </section>
+
+  <div class="grid">
+    <div class="col">
+      <section class="panel">
+        <h2>Neuer Eintrag</h2>
+        <form id="form" novalidate>
+          <div class="seg" role="radiogroup" aria-label="Art">
+            <input type="radio" name="kind" id="kOut" value="out" checked><label for="kOut" class="out">Ausgabe</label>
+            <input type="radio" name="kind" id="kIn" value="in"><label for="kIn" class="in">Einnahme</label>
+          </div>
+          <div class="row">
+            <label class="field"><span>Betrag</span>
+              <div class="amount-wrap"><input type="text" id="amount" inputmode="decimal" placeholder="0,00" autocomplete="off" enterkeyhint="done"></div>
+            </label>
+            <label class="field"><span>Datum</span><input type="date" id="date"></label>
+          </div>
+          <label class="field"><span>Kategorie</span><select id="cat"></select></label>
+          <label class="field"><span>Notiz (optional)</span><input type="text" id="noteIn" maxlength="80" placeholder="z. B. Wocheneinkauf"></label>
+          <p class="err" id="err" role="alert"></p>
+          <button class="btn" type="submit">Eintragen</button>
+        </form>
+      </section>
+
+      <section class="panel chart-panel">
+        <div class="chart-head">
+          <h2>Verteilung</h2>
+          <div class="tabs" role="group" aria-label="Diagramm zeigt">
+            <button type="button" id="viewOut" aria-pressed="true">Ausgaben</button>
+            <button type="button" id="viewIn" aria-pressed="false">Einnahmen</button>
+          </div>
+        </div>
+        <div class="pie-box" id="pie"></div>
+        <ul class="legend" id="legend"></ul>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="panel">
+        <h2 id="listTitle">Einträge</h2>
+        <ul class="list" id="list"></ul>
+        <p class="empty" id="empty" hidden>Für diesen Monat gibt es noch keine Einträge. Trage oben deine erste Einnahme oder Ausgabe ein.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Daten sichern</h2>
+        <div class="data-actions">
+          <button class="btn" type="button" id="export">Als CSV exportieren</button>
+          <button class="btn ghost" type="button" id="importBtn">CSV importieren</button>
+          <input type="file" id="importFile" accept=".csv,text/csv" hidden>
+        </div>
+        <p class="note" id="backupNote">Deine Einträge bleiben nur auf diesem Gerät. Exportiere sie regelmäßig, zum Beispiel in die Dateien-App oder iCloud Drive.</p>
+      </section>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(() => {
+  const CATS = {
+    out: ["Wohnen", "Lebensmittel", "Mobilität", "Versicherungen", "Freizeit", "Gesundheit", "Kleidung", "Sonstiges"],
+    in:  ["Gehalt", "Nebeneinkünfte", "Erstattungen", "Zinsen & Dividenden", "Geschenke", "Sonstiges"]
+  };
+  const COLORS = ["--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"];
+  const KEY = "haushaltsbuch.entries.v1";
+  const KEY_BACKUP = "haushaltsbuch.lastExport";
+  const eur = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+  const monthFmt = new Intl.DateTimeFormat("de-DE", { month: "long", year: "numeric" });
+  const dayFmt = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit" });
+  const pctFmt = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 });
+  const $ = id => document.getElementById(id);
+  const pad = n => String(n).padStart(2, "0");
+
+  // ---------- Speicher ----------
+  let entries = [];
+  try { entries = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch { entries = []; }
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(entries)); return true; } catch { toast("Speichern fehlgeschlagen. Ist der Speicher voll?"); return false; } };
+  // Bittet iOS/den Browser, die Daten nicht automatisch zu löschen
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  // ---------- Zustand ----------
+  const now = new Date();
+  let ym = { y: now.getFullYear(), m: now.getMonth() };
+  let view = "out";
+  let armed = null;
+  const ymKey = () => `${ym.y}-${pad(ym.m + 1)}`;
+  const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+  const color = (kind, cat) => { const i = (CATS[kind] || []).indexOf(cat); return `var(${COLORS[i < 0 ? 7 : i % COLORS.length]})`; };
+
+  function toast(msg) {
+    const t = $("toast"); t.textContent = msg; t.hidden = false;
+    clearTimeout(toast.timer); toast.timer = setTimeout(() => t.hidden = true, 2600);
+  }
+
+  function fillCats() {
+    const kind = document.querySelector("input[name=kind]:checked").value;
+    const sel = $("cat"); sel.innerHTML = "";
+    CATS[kind].forEach(c => { const o = document.createElement("option"); o.value = o.textContent = c; sel.appendChild(o); });
+  }
+
+  function parseAmount(s) {
+    s = String(s).trim().replace(/\s|€/g, "");
+    if (!s) return NaN;
+    if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+    const v = Number(s);
+    return isFinite(v) ? Math.round(v * 100) : NaN;
+  }
+
+  // ---------- Diagramm ----------
+  function arcPath(cx, cy, r, ri, a0, a1) {
+    const p = (rad, a) => [cx + rad * Math.sin(a), cy - rad * Math.cos(a)];
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    const [x0,y0] = p(r,a0), [x1,y1] = p(r,a1), [x2,y2] = p(ri,a1), [x3,y3] = p(ri,a0);
+    return `M${x0} ${y0}A${r} ${r} 0 ${large} 1 ${x1} ${y1}L${x2} ${y2}A${ri} ${ri} 0 ${large} 0 ${x3} ${y3}Z`;
+  }
+
+  function renderChart(monthEntries) {
+    const sums = {};
+    monthEntries.filter(e => e.kind === view).forEach(e => { sums[e.cat] = (sums[e.cat] || 0) + e.amount; });
+    const rows = Object.entries(sums).sort((a, b) => b[1] - a[1]);
+    const total = rows.reduce((s, r) => s + r[1], 0);
+    const word = view === "out" ? "Ausgaben" : "Einnahmen";
+    $("legend").innerHTML = "";
+    if (!total) { $("pie").innerHTML = `<p class="chart-empty">Keine ${word} in diesem Monat.</p>`; return; }
+    const cx = 150, cy = 150, r = 140, ri = 80;
+    let a = 0, paths = "";
+    rows.forEach(([cat, v]) => {
+      const share = v / total, a1 = a + share * Math.PI * 2, fill = color(view, cat);
+      paths += share >= 0.9999
+        ? `<path fill="${fill}" fill-rule="evenodd" d="M${cx} ${cy-r}A${r} ${r} 0 1 1 ${cx-0.01} ${cy-r}ZM${cx} ${cy-ri}A${ri} ${ri} 0 1 0 ${cx+0.01} ${cy-ri}Z"/>`
+        : `<path fill="${fill}" d="${arcPath(cx, cy, r, ri, a, a1)}"/>`;
+      a = a1;
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="dot"></span><span></span><span class="num"></span><span class="num pct"></span>`;
+      li.children[0].style.background = fill;
+      li.children[1].textContent = cat;
+      li.children[2].textContent = eur.format(v / 100);
+      li.children[3].textContent = pctFmt.format(share * 100) + " %";
+      $("legend").appendChild(li);
+    });
+    $("pie").innerHTML = `<svg viewBox="0 0 300 300" role="img" aria-label="Kuchendiagramm der ${word}">${paths}
+      <text x="150" y="142" text-anchor="middle" style="fill:var(--muted);font:600 11px var(--body);letter-spacing:.08em">${word.toUpperCase()}</text>
+      <text x="150" y="168" text-anchor="middle" style="fill:var(--ink);font:500 19px var(--mono)">${eur.format(total / 100)}</text></svg>`;
+  }
+
+  // ---------- Anzeige ----------
+  function render() {
+    const key = ymKey();
+    $("monthLabel").textContent = monthFmt.format(new Date(ym.y, ym.m, 1));
+    const me = entries.filter(e => e.date && e.date.startsWith(key))
+      .sort((a, b) => b.date.localeCompare(a.date) || (b.created || 0) - (a.created || 0));
+    const tin = me.filter(e => e.kind === "in").reduce((s, e) => s + e.amount, 0);
+    const tout = me.filter(e => e.kind === "out").reduce((s, e) => s + e.amount, 0);
+    const bal = tin - tout;
+    $("tIn").textContent = eur.format(tin / 100);
+    $("tOut").textContent = eur.format(tout / 100);
+    $("tBal").textContent = eur.format(bal / 100);
+    $("tBal").className = "big num " + (bal > 0 ? "pos" : bal < 0 ? "neg" : "");
+
+    $("listTitle").textContent = me.length ? `Einträge (${me.length})` : "Einträge";
+    const list = $("list"); list.innerHTML = "";
+    me.forEach(e => {
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="dot"></span><span class="desc"><b></b><small></small></span><span class="amt num"></span><button class="del" type="button">Löschen</button>`;
+      li.querySelector(".dot").style.background = color(e.kind, e.cat);
+      li.querySelector("b").textContent = e.note ? `${e.cat} · ${e.note}` : e.cat;
+      const [y, m, d] = e.date.split("-").map(Number);
+      li.querySelector("small").textContent = `${dayFmt.format(new Date(y, m - 1, d))} · ${e.kind === "in" ? "Einnahme" : "Ausgabe"}`;
+      const amt = li.querySelector(".amt");
+      amt.textContent = (e.kind === "in" ? "+" : "−") + eur.format(e.amount / 100);
+      amt.classList.add(e.kind === "in" ? "pos" : "neg");
+      const del = li.querySelector(".del");
+      del.setAttribute("aria-label", `Eintrag ${e.cat} ${eur.format(e.amount / 100)} löschen`);
+      if (armed === e.id) { del.classList.add("arm"); del.textContent = "Sicher?"; }
+      del.addEventListener("click", () => {
+        if (armed === e.id) { armed = null; entries = entries.filter(x => x.id !== e.id); save(); render(); toast("Eintrag gelöscht"); }
+        else { armed = e.id; render(); setTimeout(() => { if (armed === e.id) { armed = null; render(); } }, 3000); }
+      });
+      list.appendChild(li);
+    });
+    $("empty").hidden = me.length > 0;
+    renderChart(me);
+    renderBackupNote();
+  }
+
+  function renderBackupNote() {
+    let last = null; try { last = localStorage.getItem(KEY_BACKUP); } catch {}
+    const base = "Deine Einträge bleiben nur auf diesem Gerät. Exportiere sie regelmäßig, zum Beispiel in die Dateien-App oder iCloud Drive.";
+    $("backupNote").textContent = last
+      ? `${base} Letzter Export: ${new Date(last).toLocaleDateString("de-DE")}.`
+      : base;
+  }
+
+  // ---------- CSV ----------
+  const csvCell = v => { const s = String(v ?? ""); return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  function toCSV() {
+    const head = ["Datum", "Art", "Kategorie", "Betrag", "Notiz", "ID"];
+    const rows = [...entries].sort((a, b) => a.date.localeCompare(b.date)).map(e => [
+      e.date, e.kind === "in" ? "Einnahme" : "Ausgabe", e.cat,
+      (e.amount / 100).toFixed(2).replace(".", ","), e.note || "", e.id
+    ]);
+    // Semikolon + BOM, damit Excel und Numbers in Deutschland die Datei direkt richtig öffnen
+    return "﻿" + [head, ...rows].map(r => r.map(csvCell).join(";")).join("\r\n");
+  }
+
+  function parseCSV(text) {
+    text = text.replace(/^﻿/, "");
+    const delim = (text.split(/\r?\n/)[0].match(/;/g) || []).length >= (text.split(/\r?\n/)[0].match(/,/g) || []).length ? ";" : ",";
+    const rows = []; let row = [], cell = "", q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) {
+        if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+        else cell += c;
+      } else if (c === '"') q = true;
+      else if (c === delim) { row.push(cell); cell = ""; }
+      else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+      else cell += c;
+    }
+    if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+    return rows.filter(r => r.some(x => x.trim() !== ""));
+  }
+
+  async function exportCSV() {
+    if (!entries.length) { toast("Noch keine Einträge zum Exportieren"); return; }
+    const name = `haushaltsbuch-${todayISO()}.csv`;
+    const blob = new Blob([toCSV()], { type: "text/csv;charset=utf-8" });
+    const markDone = () => { try { localStorage.setItem(KEY_BACKUP, new Date().toISOString()); } catch {} renderBackupNote(); };
+    try {
+      const file = new File([blob], name, { type: "text/csv" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: "Haushaltsbuch-Export" });
+        markDone(); return;
+      }
+    } catch (err) { if (err && err.name === "AbortError") return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    markDone(); toast("Export erstellt");
+  }
+
+  function importCSV(text) {
+    const rows = parseCSV(text);
+    if (rows.length < 2) { toast("Die Datei enthält keine Einträge"); return; }
+    const h = rows[0].map(x => x.trim().toLowerCase());
+    const col = n => h.indexOf(n);
+    const iD = col("datum"), iA = col("art"), iK = col("kategorie"), iB = col("betrag"), iN = col("notiz"), iI = col("id");
+    if (iD < 0 || iA < 0 || iK < 0 || iB < 0) { toast("Unbekanntes Format. Erwartet werden Spalten wie beim Export."); return; }
+    const known = new Set(entries.map(e => e.id));
+    let added = 0, skipped = 0;
+    rows.slice(1).forEach(r => {
+      const date = (r[iD] || "").trim();
+      const kind = /^ein/i.test((r[iA] || "").trim()) ? "in" : "out";
+      const amount = parseAmount(r[iB] || "");
+      const id = (iI >= 0 && r[iI] && r[iI].trim()) || newId();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !(amount > 0) || known.has(id)) { skipped++; return; }
+      entries.push({ id, kind, amount, cat: (r[iK] || "Sonstiges").trim() || "Sonstiges", date, note: iN >= 0 ? (r[iN] || "").trim() : "", created: Date.now() + added });
+      known.add(id); added++;
+    });
+    save(); render();
+    toast(`${added} Einträge importiert` + (skipped ? `, ${skipped} übersprungen` : ""));
+  }
+
+  // ---------- Ereignisse ----------
+  document.querySelectorAll("input[name=kind]").forEach(r => r.addEventListener("change", fillCats));
+  $("form").addEventListener("submit", ev => {
+    ev.preventDefault();
+    const amount = parseAmount($("amount").value);
+    const date = $("date").value;
+    if (!(amount > 0)) { $("err").textContent = "Bitte gib einen Betrag größer als 0 ein, z. B. 12,50."; $("amount").focus(); return; }
+    if (!date) { $("err").textContent = "Bitte wähle ein Datum."; return; }
+    $("err").textContent = "";
+    const kind = document.querySelector("input[name=kind]:checked").value;
+    entries.push({ id: newId(), kind, amount, cat: $("cat").value, date, note: $("noteIn").value.trim(), created: Date.now() });
+    if (!save()) return;
+    const [y, m] = date.split("-").map(Number);
+    ym = { y, m: m - 1 };
+    $("amount").value = ""; $("noteIn").value = "";
+    $("amount").blur();
+    render();
+    toast(`${kind === "in" ? "Einnahme" : "Ausgabe"} eingetragen`);
+  });
+  $("prev").addEventListener("click", () => { ym = ym.m === 0 ? { y: ym.y - 1, m: 11 } : { y: ym.y, m: ym.m - 1 }; render(); });
+  $("next").addEventListener("click", () => { ym = ym.m === 11 ? { y: ym.y + 1, m: 0 } : { y: ym.y, m: ym.m + 1 }; render(); });
+  const setView = v => { view = v; $("viewOut").setAttribute("aria-pressed", v === "out"); $("viewIn").setAttribute("aria-pressed", v === "in"); render(); };
+  $("viewOut").addEventListener("click", () => setView("out"));
+  $("viewIn").addEventListener("click", () => setView("in"));
+  $("export").addEventListener("click", exportCSV);
+  $("importBtn").addEventListener("click", () => $("importFile").click());
+  $("importFile").addEventListener("change", ev => {
+    const f = ev.target.files && ev.target.files[0]; if (!f) return;
+    f.text().then(importCSV).catch(() => toast("Die Datei konnte nicht gelesen werden"));
+    ev.target.value = "";
+  });
+  // Daten aus anderem Tab übernehmen
+  window.addEventListener("storage", e => { if (e.key === KEY) { try { entries = JSON.parse(e.newValue || "[]"); } catch {} render(); } });
+
+  $("date").value = todayISO();
+  fillCats();
+  render();
+
+  // ---------- Offline-Unterstützung ----------
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  }
+})();
+</script>
+</body>
+</html>
